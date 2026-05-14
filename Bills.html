@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bills — Ecozep</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-title">⚡ Ecozep <span>Management System</span></div>
+    <ul class="nav-links">
+      <li><a href="dashboard.html"><span class="nav-icon">🏠</span>Dashboard</a></li>
+      <li><a href="customers.html"><span class="nav-icon">👤</span>Customers</a></li>
+      <li><a href="bills.html" class="active"><span class="nav-icon">📄</span>Bills</a></li>
+      <li><a href="payments.html"><span class="nav-icon">💳</span>Payments</a></li>
+      <li><a href="complaints.html"><span class="nav-icon">📢</span>Complaints</a></li>
+      <li><a href="triggers.html"><span class="nav-icon">🔔</span>Trigger Alerts</a></li>
+    </ul>
+    <div class="dark-toggle" onclick="toggleDark()">
+      <div class="toggle-switch"></div>
+      <span id="dark-label">Dark Mode</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1>Bills</h1>
+      <p>Generate bills using real residential slab rates</p>
+    </div>
+
+    <div class="alert alert-success" id="msg-success">Done!</div>
+    <div class="alert alert-error"   id="msg-error">Something went wrong.</div>
+
+    <!-- Reminders -->
+    <div class="reminder-box" id="reminder-box" style="display:none;">
+      <h3>🔔 Payment Reminders</h3>
+      <div id="reminder-list"></div>
+    </div>
+
+    <!-- Generate Bill -->
+    <div class="section" style="margin-bottom:28px;">
+      <div class="section-header"><h2>Generate New Bill</h2></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Customer & Meter</label>
+          <select id="bill-meter" onchange="showSlabInfo()"></select>
+        </div>
+        <div class="form-group">
+          <label>Previous Reading (kWh)</label>
+          <input type="number" id="prev-reading" placeholder="e.g. 1200" step="0.01" oninput="showSlabInfo()"/>
+        </div>
+        <div class="form-group">
+          <label>Current Reading (kWh)</label>
+          <input type="number" id="curr-reading" placeholder="e.g. 1350" step="0.01" oninput="showSlabInfo()"/>
+        </div>
+      </div>
+      <div class="slab-info" id="slab-preview"></div>
+      <div style="padding:0 24px 16px;">
+        <details>
+          <summary style="cursor:pointer;font-size:14px;color:#1a365d;font-weight:600;">View Residential Slab Rates</summary>
+          <table style="margin-top:12px;font-size:14px;">
+            <thead><tr><th>Units</th><th>Rate/Unit</th><th>Fixed</th><th>Tax</th></tr></thead>
+            <tbody>
+              <tr><td>0–50 units</td><td>₹4.85</td><td>₹35</td><td>5%</td></tr>
+              <tr><td>51–100 units</td><td>₹5.88</td><td>₹50</td><td>5%</td></tr>
+              <tr><td>101–200 units</td><td>₹7.85</td><td>₹75</td><td>8%</td></tr>
+              <tr><td>Above 200 units</td><td>₹9.13</td><td>₹100</td><td>10%</td></tr>
+            </tbody>
+          </table>
+        </details>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="generateBill()">Generate Bill</button>
+      </div>
+    </div>
+
+    <!-- Filter + Export -->
+    <div class="section" style="margin-bottom:24px;">
+      <div class="form-grid" style="padding:16px 24px;">
+        <div class="form-group">
+          <label>Filter by status</label>
+          <select id="filter-status" onchange="loadBills()">
+            <option value="">All</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+            <option value="disputed">Disputed</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bills Table -->
+    <div class="section">
+      <div class="section-header">
+        <h2>All Bills</h2>
+        <button class="btn btn-info btn-sm" onclick="exportBillsExcel()">Export to Excel</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Bill ID</th><th>Customer</th><th>Meter</th><th>Units</th><th>Amount (₹)</th><th>Penalty (₹)</th><th>Due Date</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="bills-body">
+          <tr><td colspan="9" style="text-align:center;padding:20px;color:#718096;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    function toggleDark() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('darkMode', isDark);
+      document.getElementById('dark-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+      document.getElementById('dark-label').textContent = 'Light Mode';
+    }
+
+    let allBills = [];
+
+    function loadMeters() {
+      fetch('/api/meters').then(r => r.json()).then(meters => {
+        const sel = document.getElementById('bill-meter');
+        sel.innerHTML = meters.length === 0
+          ? '<option>No meters — add customer & meter first</option>'
+          : meters.map(m => `<option value="${m.meter_id}" data-customer="${m.customer_id}">${m.customer_name} — ${m.meter_number}</option>`).join('');
+      });
+    }
+
+    function showSlabInfo() {
+      const prev = parseFloat(document.getElementById('prev-reading').value);
+      const curr = parseFloat(document.getElementById('curr-reading').value);
+      const box  = document.getElementById('slab-preview');
+      if (isNaN(prev) || isNaN(curr) || curr <= prev) { box.style.display='none'; return; }
+      const units = curr - prev;
+      let slab, energy = 0, fixed, tax;
+      if      (units <= 50)  { slab='Slab 1 (₹4.85/unit)'; energy=units*4.85;  fixed=35;  tax=5; }
+      else if (units <= 100) { slab='Slab 2 (₹5.88/unit)'; energy=(50*4.85)+((units-50)*5.88); fixed=50; tax=5; }
+      else if (units <= 200) { slab='Slab 3 (₹7.85/unit)'; energy=(50*4.85)+(50*5.88)+((units-100)*7.85); fixed=75; tax=8; }
+      else                   { slab='Slab 4 (₹9.13/unit)'; energy=(50*4.85)+(50*5.88)+(100*7.85)+((units-200)*9.13); fixed=100; tax=10; }
+      const taxAmt = (energy+fixed)*tax/100;
+      const total  = energy+fixed+taxAmt;
+      box.style.display = 'block';
+      box.innerHTML = `<strong>Units: ${units.toFixed(2)} kWh — ${slab}</strong><br/>
+        Energy: ₹${energy.toFixed(2)} | Fixed: ₹${fixed} | Tax (${tax}%): ₹${taxAmt.toFixed(2)}<br/>
+        <strong style="font-size:16px;">Estimated Total: ₹${total.toFixed(2)}</strong>`;
+    }
+
+    function generateBill() {
+      const sel = document.getElementById('bill-meter');
+      const meter_id = sel.value;
+      const customer_id = sel.options[sel.selectedIndex]?.dataset.customer;
+      const prev = document.getElementById('prev-reading').value;
+      const curr = document.getElementById('curr-reading').value;
+      if (!meter_id || !prev || !curr) { showMsg('error','Fill all fields.'); return; }
+      fetch('/api/generate-bill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_id, meter_id, previous_reading: parseFloat(prev), current_reading: parseFloat(curr) })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          showMsg('success', `Bill #${d.bill_id} generated! ${d.units_consumed} kWh → ₹${d.breakdown.totalAmount}`);
+          document.getElementById('prev-reading').value = '';
+          document.getElementById('curr-reading').value = '';
+          document.getElementById('slab-preview').style.display = 'none';
+          loadBills();
+        } else showMsg('error', d.error);
+      });
+    }
+
+    function loadBills() {
+      const status = document.getElementById('filter-status').value;
+      const url = status ? `/api/bills?status=${status}` : '/api/bills';
+      fetch(url).then(r => r.json()).then(bills => {
+        allBills = bills;
+        const tbody = document.getElementById('bills-body');
+        tbody.innerHTML = '';
+        if (!bills.length) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#718096;">No bills found.</td></tr>';
+          return;
+        }
+        bills.forEach((b, index) => {
+          const badge = { paid:'badge-green', unpaid:'badge-blue', overdue:'badge-red', disputed:'badge-orange' }[b.bill_status] || 'badge-blue';
+          tbody.innerHTML += `<tr>
+            <td>${index + 1}</td>
+            <td>${b.customer_name}</td>
+            <td>${b.meter_number}</td>
+            <td>${b.units_consumed} kWh</td>
+            <td>₹${Number(b.total_amount).toLocaleString('en-IN')}</td>
+            <td style="color:${b.penalty_amount>0?'#9b2c2c':'#718096'};">${b.penalty_amount>0?'₹'+b.penalty_amount:'—'}</td>
+            <td>${new Date(b.due_date).toLocaleDateString('en-IN')}</td>
+            <td><span class="badge ${badge}">${b.bill_status}</span></td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap;">
+              <button class="btn btn-info btn-sm" onclick="downloadPDF(${b.bill_id})">PDF</button>
+              ${b.bill_status !== 'paid'
+                ? `<a href="payments.html?bill_id=${b.bill_id}&amount=${b.total_amount}" class="btn btn-success btn-sm">Pay</a>`
+                : '<span style="color:#718096;font-size:12px;padding:6px;">Paid</span>'}
+            </td>
+          </tr>`;
+        });
+      }).catch(() => {
+        document.getElementById('bills-body').innerHTML =
+          '<tr><td colspan="9" style="text-align:center;padding:20px;color:#718096;">Start your backend server.</td></tr>';
+      });
+    }
+
+    // PDF Bill Receipt
+    function downloadPDF(billId) {
+      fetch(`/api/bill-detail/${billId}`)
+        .then(r => r.json())
+        .then(b => {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF();
+
+          // Header
+          doc.setFillColor(26, 54, 93);
+          doc.rect(0, 0, 210, 35, 'F');
+          doc.setTextColor(245, 197, 24);
+          doc.setFontSize(22);
+          doc.setFont('helvetica', 'bold');
+          doc.text('ECOZEP', 14, 18);
+          doc.setTextColor(190, 227, 248);
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          doc.text('Smart Electricity Bill Management', 14, 27);
+          doc.setTextColor(255,255,255);
+          doc.text('ELECTRICITY BILL RECEIPT', 140, 18);
+          doc.text(`Bill #${b.bill_id}`, 140, 27);
+
+          // Customer info
+          doc.setTextColor(45, 55, 72);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Customer Details', 14, 50);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(11);
+          doc.text(`Name    : ${b.customer_name}`, 14, 60);
+          doc.text(`Phone   : ${b.customer_phone || '—'}`, 14, 68);
+          doc.text(`Meter   : ${b.meter_number}`, 14, 76);
+          doc.text(`Address : ${b.address || '—'}`, 14, 84);
+
+          // Bill info
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.text('Bill Details', 120, 50);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(11);
+          doc.text(`Bill Date : ${new Date(b.bill_date).toLocaleDateString('en-IN')}`, 120, 60);
+          doc.text(`Due Date  : ${new Date(b.due_date).toLocaleDateString('en-IN')}`, 120, 68);
+          doc.text(`Units     : ${b.units_consumed} kWh`, 120, 76);
+          doc.text(`Status    : ${b.bill_status.toUpperCase()}`, 120, 84);
+
+          // Charges table
+          doc.setFillColor(247, 250, 252);
+          doc.rect(14, 96, 182, 8, 'F');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.text('Description', 16, 102);
+          doc.text('Amount (Rs.)', 160, 102);
+
+          const rows = [
+            ['Energy Charge', `Rs. ${Number(b.energy_charge).toFixed(2)}`],
+            ['Fixed Charge',  `Rs. ${Number(b.fixed_charge).toFixed(2)}`],
+            ['Tax',           `Rs. ${Number(b.tax_amount).toFixed(2)}`],
+            ['Penalty',       `Rs. ${Number(b.penalty_amount || 0).toFixed(2)}`],
+          ];
+
+          doc.setFont('helvetica', 'normal');
+          let y = 114;
+          rows.forEach(([label, val]) => {
+            doc.text(label, 16, y);
+            doc.text(val, 160, y);
+            doc.setDrawColor(226, 232, 240);
+            doc.line(14, y+3, 196, y+3);
+            y += 12;
+          });
+
+          // Total
+          doc.setFillColor(26, 54, 93);
+          doc.rect(14, y, 182, 12, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(13);
+          doc.text('TOTAL AMOUNT', 16, y+8);
+          doc.text(`Rs. ${Number(b.total_amount).toFixed(2)}`, 155, y+8);
+
+          // Footer
+          doc.setTextColor(113, 128, 150);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          doc.text('Thank you for paying on time. For queries contact Ecozep Support.', 14, y+30);
+          doc.text('Generated by Ecozep — Smart Electricity Bill Management System', 14, y+38);
+
+          doc.save(`Ecozep_Bill_${b.bill_id}_${b.customer_name.replace(' ','_')}.pdf`);
+        });
+    }
+
+    // Export to Excel
+    function exportBillsExcel() {
+      const rows = allBills.map(b => ({
+        'Bill ID': b.bill_id,
+        Customer: b.customer_name,
+        Meter: b.meter_number,
+        'Units (kWh)': b.units_consumed,
+        'Amount (Rs.)': b.total_amount,
+        'Penalty (Rs.)': b.penalty_amount || 0,
+        'Bill Date': new Date(b.bill_date).toLocaleDateString('en-IN'),
+        'Due Date': new Date(b.due_date).toLocaleDateString('en-IN'),
+        Status: b.bill_status
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Bills');
+      XLSX.writeFile(wb, 'Ecozep_Bills.xlsx');
+    }
+
+    function loadReminders() {
+      fetch('/api/reminders').then(r => r.json()).then(reminders => {
+        if (!reminders.length) return;
+        document.getElementById('reminder-box').style.display = 'block';
+        document.getElementById('reminder-list').innerHTML = reminders.map(r => `
+          <div class="reminder-item">
+            <div class="reminder-info">
+              <strong>${r.customer_name}</strong> — Bill #${r.bill_id} — ₹${Number(r.total_amount).toLocaleString('en-IN')}
+              <span>${r.days_until_due < 0 ? `OVERDUE by ${Math.abs(r.days_until_due)} days` : r.days_until_due === 0 ? 'Due TODAY' : `Due in ${r.days_until_due} day(s)`}</span>
+            </div>
+            <button class="btn btn-sm btn-warning" onclick="sendReminder(${r.bill_id}, this)">Send Email</button>
+          </div>`).join('');
+      }).catch(() => {});
+    }
+
+    function sendReminder(billId, btn) {
+      btn.textContent = 'Sending...'; btn.disabled = true;
+      fetch('/api/send-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill_id: billId })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) { btn.textContent = 'Sent!'; showMsg('success', d.message); }
+        else { btn.textContent = 'Failed'; btn.disabled = false; showMsg('error', d.error); }
+      });
+    }
+
+    function showMsg(type, text) {
+      const el = document.getElementById('msg-' + type);
+      el.textContent = text; el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4500);
+    }
+
+    loadMeters();
+    loadBills();
+    loadReminders();
+  </script>
+</body>
+</html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — Ecozep</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <script src="reminder.js"></script>
+</head>
+<body>
+
+  <aside class="sidebar">
+    <div class="sidebar-title">⚡ Ecozep <span>Management System</span></div>
+    <ul class="nav-links">
+      <li><a href="dashboard.html" class="active"><span class="nav-icon">🏠</span>Dashboard</a></li>
+      <li><a href="customers.html"><span class="nav-icon">👤</span>Customers</a></li>
+      <li><a href="bills.html"><span class="nav-icon">📄</span>Bills</a></li>
+      <li><a href="payments.html"><span class="nav-icon">💳</span>Payments</a></li>
+      <li><a href="complaints.html"><span class="nav-icon">📢</span>Complaints</a></li>
+      <li><a href="triggers.html"><span class="nav-icon">🔔</span>Trigger Alerts</a></li>
+    </ul>
+    <div class="dark-toggle" onclick="toggleDark()">
+      <div class="toggle-switch"></div>
+      <span id="dark-label">Dark Mode</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <p>Overview of the electricity billing system</p>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">Total Customers</div>
+        <div class="card-value" id="total-customers">...</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total Bills</div>
+        <div class="card-value" id="total-bills">...</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Amount Collected</div>
+        <div class="card-value green" id="total-collected">...</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Outstanding</div>
+        <div class="card-value red" id="total-outstanding">...</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Overdue Bills</div>
+        <div class="card-value orange" id="total-overdue">...</div>
+      </div>
+    </div>
+
+    <!-- Consumption Graph -->
+    <div class="section" style="margin-bottom:28px;">
+      <div class="section-header"><h2>Monthly Consumption (kWh)</h2></div>
+      <div class="chart-container">
+        <canvas id="consumptionChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Recent Bills -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Recent Bills</h2>
+        <a href="bills.html" class="btn btn-primary">View All</a>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Bill ID</th><th>Customer</th><th>Bill Date</th><th>Amount (₹)</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="recent-bills-body">
+          <tr><td colspan="5" style="text-align:center;padding:20px;color:#718096;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    // Dark mode
+    function toggleDark() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('darkMode', isDark);
+      document.getElementById('dark-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+      if (window.consumptionChart) {
+        const tickColor  = isDark ? '#ffffff' : '#718096';
+        const gridColor  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+        const legendColor= isDark ? '#ffffff' : '#718096';
+        window.consumptionChart.options.scales.x.ticks.color = tickColor;
+        window.consumptionChart.options.scales.y.ticks.color = tickColor;
+        window.consumptionChart.options.scales.x.grid.color  = gridColor;
+        window.consumptionChart.options.scales.y.grid.color  = gridColor;
+        window.consumptionChart.options.plugins.legend.labels.color = legendColor;
+        window.consumptionChart.data.datasets[0].borderColor     = isDark ? '#60a5fa' : '#1a365d';
+        window.consumptionChart.data.datasets[0].backgroundColor = isDark ? 'rgba(96,165,250,0.15)' : 'rgba(26,54,93,0.1)';
+        window.consumptionChart.data.datasets[0].pointBackgroundColor = isDark ? '#60a5fa' : '#1a365d';
+        window.consumptionChart.update();
+      }
+    }
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+      document.getElementById('dark-label').textContent = 'Light Mode';
+    }
+
+    // Dashboard stats
+    fetch('/api/dashboard-stats')
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('total-customers').textContent   = data.totalCustomers;
+        document.getElementById('total-bills').textContent       = data.totalBills;
+        document.getElementById('total-collected').textContent   = '₹' + Number(data.totalCollected).toLocaleString('en-IN');
+        document.getElementById('total-outstanding').textContent = '₹' + Number(data.totalOutstanding).toLocaleString('en-IN');
+        document.getElementById('total-overdue').textContent     = data.totalOverdue;
+      })
+      .catch(() => {
+        ['total-customers','total-bills','total-collected','total-outstanding','total-overdue']
+          .forEach(id => document.getElementById(id).textContent = '—');
+      });
+
+    // Recent bills
+    fetch('/api/recent-bills')
+      .then(r => r.json())
+      .then(bills => {
+        const tbody = document.getElementById('recent-bills-body');
+        tbody.innerHTML = '';
+        if (!bills.length) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#718096;">No bills yet.</td></tr>';
+          return;
+        }
+        bills.forEach((b, index) => {
+          const badge = { paid:'badge-green', unpaid:'badge-blue', overdue:'badge-red', disputed:'badge-orange' }[b.bill_status] || 'badge-blue';
+          tbody.innerHTML += `<tr>
+            <td>${index + 1}</td>
+            <td>${b.customer_name}</td>
+            <td>${new Date(b.bill_date).toLocaleDateString('en-IN')}</td>
+            <td>₹${Number(b.total_amount).toLocaleString('en-IN')}</td>
+            <td><span class="badge ${badge}">${b.bill_status}</span></td>
+          </tr>`;
+        });
+      })
+      .catch(() => {
+        document.getElementById('recent-bills-body').innerHTML =
+          '<tr><td colspan="5" style="text-align:center;padding:20px;color:#718096;">Start your backend server.</td></tr>';
+      });
+
+    // ── Line Graph (replaces bar chart) ──────────────────────
+    fetch('/api/consumption-chart')
+      .then(r => r.json())
+      .then(data => {
+        const isDark     = document.body.classList.contains('dark');
+        const tickColor  = isDark ? '#ffffff' : '#718096';
+        const gridColor  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+        const lineColor  = isDark ? '#60a5fa' : '#1a365d';
+        const fillColor  = isDark ? 'rgba(96,165,250,0.15)' : 'rgba(26,54,93,0.1)';
+
+        const ctx = document.getElementById('consumptionChart').getContext('2d');
+        window.consumptionChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.map(d => d.month),
+            datasets: [{
+              label: 'Units Consumed (kWh)',
+              data: data.map(d => d.total_units),
+              borderColor: lineColor,
+              backgroundColor: fillColor,
+              borderWidth: 3,
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: lineColor,
+              pointBorderColor: '#ffffff',
+              pointBorderWidth: 2,
+              pointRadius: 6,
+              pointHoverRadius: 9
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: {
+                display: true,
+                labels: {
+                  color: isDark ? '#ffffff' : '#718096',
+                  font: { size: 14, weight: 'bold' }
+                }
+              },
+              tooltip: {
+                backgroundColor: isDark ? '#1e293b' : '#1a365d',
+                titleColor: '#ffffff',
+                bodyColor: '#ffffff',
+                borderColor: lineColor,
+                borderWidth: 1,
+                padding: 12,
+                callbacks: {
+                  label: ctx => ` ${ctx.parsed.y} kWh consumed`
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: tickColor,
+                  font: { size: 13, weight: 'bold' }
+                },
+                grid: { color: gridColor }
+              },
+              y: {
+                ticks: {
+                  color: tickColor,
+                  font: { size: 13, weight: 'bold' },
+                  callback: val => val + ' kWh'
+                },
+                grid: { color: gridColor },
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

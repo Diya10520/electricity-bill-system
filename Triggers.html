@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Trigger Notifications — Ecozep</title>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .trigger-alert {
+      border-radius: 12px; padding: 18px 22px;
+      display: flex; align-items: flex-start; gap: 14px;
+      margin-bottom: 16px; border: 2px solid;
+      animation: slideIn 0.4s ease;
+    }
+    @keyframes slideIn {
+      from { opacity:0; transform:translateY(-8px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .trigger-alert.danger  { background:#fde8e8; border-color:#e53e3e; }
+    .trigger-alert.warning { background:#fff3cd; border-color:#f59e0b; }
+    .trigger-alert.success { background:#e6f4ea; border-color:#38a169; }
+    .alert-icon  { font-size:34px; flex-shrink:0; }
+    .alert-title { font-size:20px; font-weight:800; margin-bottom:6px; color:#1a202c; }
+    .alert-body  { font-size:17px; color:#4a5568; line-height:1.7; }
+    .alert-body b { color:#1a202c; }
+
+    .summary-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
+      gap: 14px; margin-bottom: 24px;
+    }
+    .sum-card {
+      background: white; border-radius: 12px;
+      padding: 16px; text-align: center;
+      border: 1px solid #e2e8f0;
+    }
+    .sum-num   { font-size:34px; font-weight:800; }
+    .sum-label { font-size:15px; color:#718096; margin-top:4px; font-weight:600; }
+    .c-green  { color:#38a169; }
+    .c-red    { color:#e53e3e; }
+    .c-orange { color:#d97706; }
+    .c-blue   { color:#1a365d; }
+
+    .month-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px,1fr));
+      gap: 14px; margin-bottom: 24px;
+    }
+    .month-card {
+      background: white; border-radius: 12px;
+      padding: 16px; border-left: 5px solid #e2e8f0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      transition: transform 0.15s;
+    }
+    .month-card:hover  { transform: translateY(-2px); }
+    .month-card.paid   { border-left-color:#38a169; }
+    .month-card.unpaid { border-left-color:#e53e3e; }
+    .month-card.overdue{ border-left-color:#d97706; }
+
+    .mc-month  { font-size:17px; font-weight:800; color:#1a365d; margin-bottom:5px; }
+    .mc-units  { font-size:15px; color:#718096; margin-bottom:3px; }
+    .mc-amount { font-size:26px; font-weight:800; color:#1a365d; margin-bottom:4px; }
+    .mc-due    { font-size:14px; color:#718096; margin-bottom:8px; }
+    .mc-penalty{ font-size:15px; color:#d97706; font-weight:600; margin-bottom:4px; }
+
+    .log-box {
+      background: white; border-radius: 12px;
+      padding: 18px 22px; border: 1px solid #e2e8f0;
+    }
+    .log-title { font-size:19px; font-weight:800; color:#1a365d; margin-bottom:14px; }
+    .log-entry {
+      display:flex; align-items:flex-start; gap:10px;
+      padding:10px 0; border-bottom:1px solid #f0f4f8;
+      font-size:16px; animation: slideIn 0.3s ease;
+    }
+    .log-entry:last-child { border-bottom:none; }
+    .log-icon { font-size:18px; flex-shrink:0; margin-top:2px; }
+    .log-text { color:#2d3748; flex:1; line-height:1.6; font-weight:500; }
+    .log-time { font-size:14px; color:#a0aec0; flex-shrink:0; white-space:nowrap; }
+
+    .filter-bar {
+      display:flex; gap:12px; align-items:center;
+      flex-wrap:wrap; margin-bottom:24px;
+    }
+    .filter-bar select, .filter-bar input {
+      padding:9px 14px; border:1px solid #cbd5e0;
+      border-radius:8px; font-size:15px;
+      font-family:'Segoe UI',Arial,sans-serif;
+      background:white; color:#2d3748; outline:none;
+    }
+    body.dark .filter-bar select,
+    body.dark .filter-bar input {
+      background:#1e293b; color:#e2e8f0; border-color:#334155;
+    }
+    body.dark .sum-card,
+    body.dark .month-card,
+    body.dark .log-box {
+      background:#1e293b; border-color:#334155; color:#e2e8f0;
+    }
+    body.dark .alert-body  { color:#e2e8f0; font-weight:600; }
+    body.dark .alert-title { color:#ffffff; font-weight:800; }
+    body.dark .trigger-alert.danger  { background:#2d0a0a; }
+    body.dark .trigger-alert.warning { background:#1e1a00; }
+    body.dark .trigger-alert.success { background:#0a2010; }
+    body.dark .log-entry { border-color:#334155; }
+    body.dark .log-text  { color:#f1f5f9; font-weight:600; }
+    body.dark .mc-month  { color:#60a5fa; font-weight:800; }
+    body.dark .mc-amount { color:#60a5fa; font-weight:800; }
+  </style>
+</head>
+<body>
+
+  <aside class="sidebar">
+    <div class="sidebar-title">⚡ Ecozep <span>Management System</span></div>
+    <ul class="nav-links">
+      <li><a href="dashboard.html"><span class="nav-icon">🏠</span>Dashboard</a></li>
+      <li><a href="customers.html"><span class="nav-icon">👤</span>Customers</a></li>
+      <li><a href="bills.html"><span class="nav-icon">📄</span>Bills</a></li>
+      <li><a href="payments.html"><span class="nav-icon">💳</span>Payments</a></li>
+      <li><a href="complaints.html"><span class="nav-icon">📢</span>Complaints</a></li>
+      <li><a href="triggers.html" class="active"><span class="nav-icon">🔔</span>Trigger Alerts</a></li>
+    </ul>
+    <div class="dark-toggle" onclick="toggleDark()">
+      <div class="toggle-switch"></div>
+      <span id="dark-label">Dark Mode</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1>Trigger Notification System</h1>
+      <p>Real-time bill payment alerts fired by MySQL triggers</p>
+    </div>
+
+    <div class="alert alert-success" id="msg-success"></div>
+    <div class="alert alert-error"   id="msg-error"></div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <select id="cust-filter" onchange="loadTriggers()">
+        <option value="">All Customers</option>
+      </select>
+      <select id="status-filter" onchange="loadTriggers()">
+        <option value="">All Statuses</option>
+        <option value="paid">Paid</option>
+        <option value="unpaid">Unpaid</option>
+        <option value="overdue">Overdue</option>
+      </select>
+      <button class="btn btn-primary" onclick="loadTriggers()">🔄 Refresh</button>
+      <button class="btn btn-warning" onclick="sendAllReminders()" style="background:#d97706;color:white;">
+        📧 Send All Reminders
+      </button>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="summary-bar" id="summary-bar">
+      <div class="sum-card"><div class="sum-num c-blue" id="s-total">—</div><div class="sum-label">Total Bills</div></div>
+      <div class="sum-card"><div class="sum-num c-green" id="s-paid">—</div><div class="sum-label">Months Paid ✅</div></div>
+      <div class="sum-card"><div class="sum-num c-red" id="s-unpaid">—</div><div class="sum-label">Months Unpaid ❌</div></div>
+      <div class="sum-card"><div class="sum-num c-orange" id="s-overdue">—</div><div class="sum-label">Months Overdue ⚠️</div></div>
+      <div class="sum-card"><div class="sum-num c-red" id="s-outstanding">—</div><div class="sum-label">Total Outstanding</div></div>
+    </div>
+
+    <!-- Top trigger alerts -->
+    <div id="alert-box"></div>
+
+    <!-- Month-wise bill cards -->
+    <div class="section" style="margin-bottom:24px;">
+      <div class="section-header"><h2>📅 Month-wise Bill Status</h2></div>
+      <div class="month-grid" id="month-grid" style="padding:16px;">
+        <div style="text-align:center;color:#718096;padding:20px;width:100%;">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Trigger log -->
+    <div class="log-box">
+      <div class="log-title">🗄️ MySQL Trigger Event Log</div>
+      <div id="trigger-log">
+        <div style="color:#a0aec0;font-size:14px;padding:10px 0;">
+          Trigger events will appear here when bills are checked...
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ── Dark mode ──────────────────────────────────────────────
+    function toggleDark() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('darkMode', isDark);
+      document.getElementById('dark-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+      document.getElementById('dark-label').textContent = 'Light Mode';
+    }
+
+    // ── Load customer dropdown ─────────────────────────────────
+    fetch('/api/customers')
+      .then(r => r.json())
+      .then(customers => {
+        const sel = document.getElementById('cust-filter');
+        customers.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.customer_id;
+          opt.textContent = c.name;
+          sel.appendChild(opt);
+        });
+      }).catch(() => {});
+
+    // ── Main load function ─────────────────────────────────────
+    function loadTriggers() {
+      const custId = document.getElementById('cust-filter').value;
+      const status = document.getElementById('status-filter').value;
+
+      // Build URL
+      let url = '/api/trigger-bills';
+      const params = [];
+      if (custId) params.push('customer_id=' + custId);
+      if (status)  params.push('status=' + status);
+      if (params.length) url += '?' + params.join('&');
+
+      fetch(url)
+        .then(r => r.json())
+        .then(bills => {
+          renderSummary(bills);
+          renderAlerts(bills);
+          renderMonthCards(bills);
+          renderTriggerLog(bills);
+        })
+        .catch(() => {
+          document.getElementById('month-grid').innerHTML =
+            '<div style="text-align:center;color:#718096;padding:20px;">Start your backend server to see data.</div>';
+        });
+    }
+
+    // ── Summary bar ───────────────────────────────────────────
+    function renderSummary(bills) {
+      const paid     = bills.filter(b => b.bill_status === 'paid').length;
+      const unpaid   = bills.filter(b => b.bill_status === 'unpaid').length;
+      const overdue  = bills.filter(b => b.bill_status === 'overdue').length;
+      const outstanding = bills
+        .filter(b => b.bill_status !== 'paid')
+        .reduce((s, b) => s + parseFloat(b.total_amount) + parseFloat(b.penalty_amount || 0), 0);
+
+      document.getElementById('s-total').textContent       = bills.length;
+      document.getElementById('s-paid').textContent        = paid;
+      document.getElementById('s-unpaid').textContent      = unpaid;
+      document.getElementById('s-overdue').textContent     = overdue;
+      document.getElementById('s-outstanding').textContent = '₹' + outstanding.toFixed(2);
+    }
+
+    // ── Top alert banners ─────────────────────────────────────
+    function renderAlerts(bills) {
+      const overdue = bills.filter(b => b.bill_status === 'overdue');
+      const unpaid  = bills.filter(b => b.bill_status === 'unpaid');
+      let html = '';
+
+      if (overdue.length > 0) {
+        const names    = [...new Set(overdue.map(b => b.customer_name))].join(', ');
+        const months   = overdue.map(b => formatMonth(b.bill_date)).join(', ');
+        const totalPen = overdue.reduce((s,b) => s + parseFloat(b.penalty_amount||0), 0);
+        html += `
+          <div class="trigger-alert danger">
+            <div class="alert-icon">🚨</div>
+            <div>
+              <div class="alert-title">TRIGGER FIRED: trg_overdue_alert — Overdue Bills Detected!</div>
+              <div class="alert-body">
+                <b>${overdue.length} bill(s)</b> are overdue for: <b>${names}</b><br>
+                Overdue months: <b>${months}</b><br>
+                Total penalty applied: <b>₹${totalPen.toFixed(2)}</b> (1.5% per month)<br>
+                ⚠️ If unpaid, next bill will include current charges + overdue amount + penalty together.<br>
+                Trigger: <code>UPDATE Bill SET bill_status='overdue' WHERE bill_status='unpaid' AND due_date &lt; CURDATE()</code>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      if (unpaid.length > 0) {
+        const months = unpaid.map(b => formatMonth(b.bill_date)).join(', ');
+        html += `
+          <div class="trigger-alert warning">
+            <div class="alert-icon">⚠️</div>
+            <div>
+              <div class="alert-title">TRIGGER FIRED: trg_payment_reminder — Unpaid Bills Pending</div>
+              <div class="alert-body">
+                <b>${unpaid.length} bill(s)</b> are unpaid.<br>
+                Unpaid months: <b>${months}</b><br>
+                Please pay before due date to avoid 1.5% monthly penalty.<br>
+                Total unpaid: <b>₹${unpaid.reduce((s,b)=>s+parseFloat(b.total_amount),0).toFixed(2)}</b>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      if (overdue.length === 0 && unpaid.length === 0 && bills.length > 0) {
+        html = `
+          <div class="trigger-alert success">
+            <div class="alert-icon">✅</div>
+            <div>
+              <div class="alert-title">All Bills Paid — No Triggers Fired</div>
+              <div class="alert-body">All selected bills have been paid on time. No penalty. Good standing!</div>
+            </div>
+          </div>`;
+      }
+
+      document.getElementById('alert-box').innerHTML = html;
+    }
+
+    // ── Month-wise cards ──────────────────────────────────────
+    function renderMonthCards(bills) {
+      const grid = document.getElementById('month-grid');
+      if (!bills.length) {
+        grid.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;width:100%;">No bills found.</div>';
+        return;
+      }
+
+      grid.innerHTML = bills.map(b => {
+        const penalty = parseFloat(b.penalty_amount || 0);
+        const badgeClass = {paid:'badge-green', unpaid:'badge-red', overdue:'badge-orange', disputed:'badge-blue'}[b.bill_status] || 'badge-blue';
+        return `
+          <div class="month-card ${b.bill_status}">
+            <div class="mc-month">📅 ${formatMonth(b.bill_date)}</div>
+            <div class="mc-units">👤 ${b.customer_name}</div>
+            <div class="mc-units">⚡ ${b.units_consumed} kWh consumed</div>
+            <div class="mc-amount">₹${Number(b.total_amount).toLocaleString('en-IN')}</div>
+            ${penalty > 0 ? `<div class="mc-penalty">⚠️ Penalty: ₹${penalty.toFixed(2)}</div>` : ''}
+            <div class="mc-due">📆 Due: ${new Date(b.due_date).toLocaleDateString('en-IN')}</div>
+            <span class="badge ${badgeClass}">${b.bill_status}</span>
+            ${b.bill_status !== 'paid' ? `
+              <div style="margin-top:10px;display:flex;gap:6px;">
+                <a href="payments.html?bill_id=${b.bill_id}&amount=${b.total_amount}"
+                   class="btn btn-success btn-sm">Pay Now</a>
+                <button class="btn btn-sm" style="background:#d97706;color:white;"
+                   onclick="sendOneReminder(${b.bill_id})">Send Alert</button>
+              </div>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    // ── Trigger log ───────────────────────────────────────────
+    function renderTriggerLog(bills) {
+      const now = new Date().toLocaleTimeString('en-IN');
+      const log = [];
+
+      bills.forEach(b => {
+        const month = formatMonth(b.bill_date);
+        if (b.bill_status === 'overdue') {
+          log.push({ icon:'🔴', text:`[trg_overdue_alert] ${b.customer_name} — ${month} — ₹${b.total_amount} OVERDUE. Penalty ₹${b.penalty_amount||0} auto-applied.` });
+          log.push({ icon:'🗄️', text:`[SQL] UPDATE Bill SET bill_status='overdue', penalty_amount=total_amount*0.015 WHERE bill_id=${b.bill_id}` });
+        } else if (b.bill_status === 'unpaid') {
+          log.push({ icon:'🟡', text:`[trg_payment_reminder] ${b.customer_name} — ${month} — ₹${b.total_amount} UNPAID. Due: ${new Date(b.due_date).toLocaleDateString('en-IN')}` });
+          log.push({ icon:'🗄️', text:`[SQL] SELECT * FROM Bill WHERE bill_status='unpaid' AND due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)` });
+        } else if (b.bill_status === 'paid') {
+          log.push({ icon:'🟢', text:`[trg_payment_confirmed] ${b.customer_name} — ${month} — ₹${b.total_amount} PAID. Bill status updated to paid.` });
+        }
+      });
+
+      if (!log.length) {
+        document.getElementById('trigger-log').innerHTML =
+          '<div style="color:#a0aec0;font-size:14px;padding:10px 0;">No trigger events to show.</div>';
+        return;
+      }
+
+      document.getElementById('trigger-log').innerHTML = log.map(l => `
+        <div class="log-entry">
+          <span class="log-icon">${l.icon}</span>
+          <span class="log-text">${l.text}</span>
+          <span class="log-time">${now}</span>
+        </div>`).join('');
+    }
+
+    // ── Send one reminder ──────────────────────────────────────
+    function sendOneReminder(billId) {
+      fetch('/api/send-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill_id: billId })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) showNotificationPopup(d.message, d.customer);
+        else showMsg('error', d.error);
+      })
+      .catch(() => showMsg('error', 'Cannot reach server.'));
+    }
+
+    function sendAllReminders() {
+      fetch('/api/trigger-bills')
+        .then(r => r.json())
+        .then(bills => {
+          const unpaidOverdue = bills.filter(b => b.bill_status !== 'paid');
+          if (!unpaidOverdue.length) { showMsg('success', 'No unpaid bills!'); return; }
+          unpaidOverdue.forEach((b, i) => {
+            setTimeout(() => {
+              fetch('/api/send-reminder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bill_id: b.bill_id })
+              }).then(r => r.json()).then(d => {
+                if (d.success) showMsg('success', `🔔 Alert sent for ${b.customer_name} — Bill #${b.bill_id}`);
+              });
+            }, i * 700);
+          });
+        });
+    }
+
+    function showNotificationPopup(message, customerName) {
+      const old = document.getElementById('notif-popup');
+      if (old) old.remove();
+      const popup = document.createElement('div');
+      popup.id = 'notif-popup';
+      popup.style.cssText = `
+        position:fixed; top:24px; right:24px; z-index:9999;
+        background:white; border:2px solid #d97706; border-radius:14px;
+        padding:20px 24px; box-shadow:0 8px 32px rgba(0,0,0,0.18);
+        max-width:380px; font-family:'Segoe UI',Arial,sans-serif;
+        animation:slideInRight 0.4s ease;
+      `;
+      if (document.body.classList.contains('dark')) {
+        popup.style.background = '#1e293b';
+        popup.style.color = '#e2e8f0';
+      }
+      popup.innerHTML = `
+        <style>@keyframes slideInRight {
+          from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}
+        }</style>
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="font-size:28px;">🔔</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:16px;color:#d97706;margin-bottom:6px;">
+              Alert Sent to ${customerName}!
+            </div>
+            <div style="font-size:14px;color:#4a5568;line-height:1.6;">${message}</div>
+            <div style="margin-top:10px;font-size:12px;color:#a0aec0;">
+              🕐 ${new Date().toLocaleTimeString('en-IN')} — Notification recorded
+            </div>
+          </div>
+          <button onclick="this.parentElement.parentElement.remove()"
+            style="background:none;border:none;font-size:18px;cursor:pointer;color:#718096;">✕</button>
+        </div>`;
+      document.body.appendChild(popup);
+      setTimeout(() => { if (popup.parentNode) popup.remove(); }, 5000);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────
+    function formatMonth(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    }
+
+    function showMsg(type, text) {
+      const el = document.getElementById('msg-' + type);
+      el.textContent = text; el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4500);
+    }
+
+    // Load on page open
+    loadTriggers();
+  </script>
+</body>
+</html>

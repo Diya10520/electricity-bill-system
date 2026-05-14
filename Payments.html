@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Payments — ElectroBill</title>
+  <link rel="stylesheet" href="style.css"/>
+
+  <!-- Apply dark mode BEFORE page renders -->
+  <script>
+    if (localStorage.getItem("theme") === "dark") {
+      document.documentElement.classList.add("dark");
+    }
+  </script>
+</head>
+
+<body>
+
+  <aside class="sidebar">
+    <div class="sidebar-title">
+      ⚡ ElectroBill
+      <span>Management System</span>
+    </div>
+
+    <ul class="nav-links">
+      <li><a href="index.html">🏠 Dashboard</a></li>
+      <li><a href="customers.html">👤 Customers</a></li>
+      <li><a href="bills.html">📄 Bills</a></li>
+      <li><a href="complaints.html">📢 Complaints</a></li>
+      <li><a href="triggers.html">🔔 Trigger Alerts</a></li>
+      <li><a href="payments.html" class="active">💳 Payments</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+
+    <div class="page-header">
+      <h1>Payments</h1>
+      <p>Record a bill payment</p>
+    </div>
+
+    <div class="alert alert-success" id="msg-success">Payment recorded successfully!</div>
+    <div class="alert alert-error" id="msg-error">Something went wrong.</div>
+
+    <!-- Payment Form -->
+    <div class="section" style="max-width:600px; margin-bottom:32px;">
+      <div class="section-header"><h2>New Payment</h2></div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="bill-id">Bill ID</label>
+          <input type="number" id="bill-id" placeholder="e.g. 10010001"/>
+        </div>
+
+        <div class="form-group">
+          <label for="amount">Amount (₹)</label>
+          <input type="number" id="amount" step="0.01" placeholder="e.g. 572.40"/>
+        </div>
+
+        <div class="form-group">
+          <label for="method">Payment Method</label>
+          <select id="method">
+            <option value="upi">UPI</option>
+            <option value="net_banking">Net Banking</option>
+            <option value="card">Card</option>
+            <option value="cash">Cash</option>
+            <option value="cheque">Cheque</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="txn-ref">Transaction Reference</label>
+          <input type="text" id="txn-ref" placeholder="e.g. UPI20240310001"/>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-success" onclick="recordPayment()">Record Payment</button>
+        <a href="bills.html" class="btn btn-primary">Back to Bills</a>
+      </div>
+    </div>
+
+    <!-- Payment History -->
+    <div class="section">
+      <div class="section-header"><h2>Payment History</h2></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Payment ID</th>
+            <th>Bill ID</th>
+            <th>Customer</th>
+            <th>Amount (₹)</th>
+            <th>Method</th>
+            <th>Date</th>
+            <th>Reference</th>
+          </tr>
+        </thead>
+
+        <tbody id="payments-body">
+          <tr>
+            <td colspan="7" style="text-align:center;padding:20px;color:#718096;">
+              Loading...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <script>
+    // Apply dark mode to BODY (needed for your CSS)
+    if (localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+
+    // Prefill from URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('bill_id')) document.getElementById('bill-id').value = params.get('bill_id');
+    if (params.get('amount')) document.getElementById('amount').value = params.get('amount');
+
+    function recordPayment() {
+      const billId = document.getElementById('bill-id').value;
+      const amount = document.getElementById('amount').value;
+      const method = document.getElementById('method').value;
+      const txnRef = document.getElementById('txn-ref').value.trim();
+
+      if (!billId || !amount) {
+        showMessage('error', 'Bill ID and amount are required.');
+        return;
+      }
+
+      fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bill_id: parseInt(billId),
+          amount_paid: parseFloat(amount),
+          payment_method: method,
+          transaction_ref: txnRef
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showMessage('success', 'Payment recorded!');
+          document.getElementById('bill-id').value = '';
+          document.getElementById('amount').value = '';
+          document.getElementById('txn-ref').value = '';
+          loadPayments();
+        } else {
+          showMessage('error', data.error || 'Failed.');
+        }
+      })
+      .catch(() => showMessage('error', 'Server error.'));
+    }
+
+    function loadPayments() {
+      fetch('/api/payments')
+        .then(res => res.json())
+        .then(payments => {
+          const tbody = document.getElementById('payments-body');
+          tbody.innerHTML = '';
+
+          payments.forEach(p => {
+            tbody.innerHTML += `
+              <tr>
+                <td>#${p.payment_id}</td>
+                <td>#${p.bill_id}</td>
+                <td>${p.customer_name}</td>
+                <td>₹${Number(p.amount_paid).toLocaleString('en-IN')}</td>
+                <td><span class="badge badge-blue">${p.payment_method}</span></td>
+                <td>${new Date(p.payment_date).toLocaleDateString('en-IN')}</td>
+                <td style="font-size:12px;color:#718096;">${p.transaction_ref || '—'}</td>
+              </tr>
+            `;
+          });
+        })
+        .catch(() => {
+          document.getElementById('payments-body').innerHTML =
+            '<tr><td colspan="7" style="text-align:center;padding:20px;">Start backend to load data</td></tr>';
+        });
+    }
+
+    function showMessage(type, text) {
+      const el = document.getElementById('msg-' + type);
+      el.textContent = text;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 3000);
+    }
+
+    loadPayments();
+  </script>
+
+</body>
+</html>

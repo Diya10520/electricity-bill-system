@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Complaints — Ecozep</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-title">⚡ Ecozep <span>Management System</span></div>
+    <ul class="nav-links">
+      <li><a href="dashboard.html"><span class="nav-icon">🏠</span>Dashboard</a></li>
+      <li><a href="customers.html"><span class="nav-icon">👤</span>Customers</a></li>
+      <li><a href="bills.html"><span class="nav-icon">📄</span>Bills</a></li>
+      <li><a href="payments.html"><span class="nav-icon">💳</span>Payments</a></li>
+      <li><a href="complaints.html" class="active"><span class="nav-icon">📢</span>Complaints</a></li>
+    </ul>
+    <div class="dark-toggle" onclick="toggleDark()">
+      <div class="toggle-switch"></div>
+      <span id="dark-label">Dark Mode</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1>Complaints</h1>
+      <p>Raise and manage billing disputes</p>
+    </div>
+
+    <div class="alert alert-success" id="msg-success">Done!</div>
+    <div class="alert alert-error"   id="msg-error">Something went wrong.</div>
+
+    <!-- Raise Complaint -->
+    <div class="section" style="margin-bottom:28px;">
+      <div class="section-header"><h2>Raise New Complaint</h2></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Customer</label>
+          <select id="comp-customer"></select>
+        </div>
+        <div class="form-group">
+          <label>Bill ID (optional)</label>
+          <input type="number" id="comp-bill" placeholder="e.g. 3"/>
+        </div>
+        <div class="form-group" style="grid-column: 1/-1;">
+          <label>Description</label>
+          <textarea id="comp-desc" rows="3" placeholder="Describe the issue..."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-warning" onclick="raiseComplaint()">Submit Complaint</button>
+      </div>
+    </div>
+
+    <!-- Complaints Table -->
+    <div class="section">
+      <div class="section-header"><h2>All Complaints</h2></div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Customer</th><th>Bill ID</th><th>Description</th><th>Status</th><th>Raised On</th><th>Action</th></tr>
+        </thead>
+        <tbody id="complaints-body">
+          <tr><td colspan="7" style="text-align:center;padding:20px;color:#718096;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    function toggleDark() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('darkMode', isDark);
+      document.getElementById('dark-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+      document.getElementById('dark-label').textContent = 'Light Mode';
+    }
+
+    function loadCustomers() {
+      fetch('/api/customers').then(r => r.json()).then(customers => {
+        const sel = document.getElementById('comp-customer');
+        sel.innerHTML = customers.map(c => `<option value="${c.customer_id}">${c.name}</option>`).join('');
+      });
+    }
+
+    function loadComplaints() {
+      fetch('/api/complaints').then(r => r.json()).then(complaints => {
+        const tbody = document.getElementById('complaints-body');
+        tbody.innerHTML = '';
+        if (!complaints.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#718096;">No complaints yet.</td></tr>';
+          return;
+        }
+        complaints.forEach(c => {
+          const badge = {
+            open:'badge-red', in_progress:'badge-orange',
+            resolved:'badge-green', closed:'badge-blue'
+          }[c.complaint_status] || 'badge-blue';
+          tbody.innerHTML += `<tr>
+            <td>#${c.complaint_id}</td>
+            <td>${c.customer_name}</td>
+            <td>${c.bill_id ? '#'+c.bill_id : '—'}</td>
+            <td style="max-width:250px;font-size:14px;">${c.description}</td>
+            <td><span class="badge ${badge}">${c.complaint_status}</span></td>
+            <td>${new Date(c.raised_on).toLocaleDateString('en-IN')}</td>
+            <td>
+              ${c.complaint_status !== 'resolved' && c.complaint_status !== 'closed'
+                ? `<button class="btn btn-success btn-sm" onclick="resolveComplaint(${c.complaint_id})">Resolve</button>`
+                : '<span style="color:#718096;font-size:13px;">Done</span>'}
+            </td>
+          </tr>`;
+        });
+      }).catch(() => {
+        document.getElementById('complaints-body').innerHTML =
+          '<tr><td colspan="7" style="text-align:center;padding:20px;color:#718096;">Start your backend server.</td></tr>';
+      });
+    }
+
+    function raiseComplaint() {
+      const customer_id = document.getElementById('comp-customer').value;
+      const bill_id     = document.getElementById('comp-bill').value || null;
+      const description = document.getElementById('comp-desc').value.trim();
+      if (!description) { showMsg('error','Please describe the issue.'); return; }
+      fetch('/api/complaints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_id, bill_id, description })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          showMsg('success','Complaint submitted!');
+          document.getElementById('comp-bill').value = '';
+          document.getElementById('comp-desc').value = '';
+          loadComplaints();
+        } else showMsg('error', d.error);
+      });
+    }
+
+    function resolveComplaint(id) {
+      fetch(`/api/complaints/${id}/resolve`, { method: 'PUT' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.success) { showMsg('success','Complaint resolved!'); loadComplaints(); }
+          else showMsg('error', d.error);
+        });
+    }
+
+    function showMsg(type, text) {
+      const el = document.getElementById('msg-' + type);
+      el.textContent = text; el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    loadCustomers();
+    loadComplaints();
+  </script>
+</body>
+</html>

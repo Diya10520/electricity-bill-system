@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Customers — Ecozep</title>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    body.dark .mc-name { color: #ffffff !important; font-weight: 700; }
+    body.dark tbody td { color: #ffffff !important; font-weight: 500; }
+    body.dark tbody td a { color: #60a5fa !important; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <aside class="sidebar">
+    <div class="sidebar-title">⚡ Ecozep <span>Management System</span></div>
+    <ul class="nav-links">
+      <li><a href="dashboard.html"><span class="nav-icon">🏠</span>Dashboard</a></li>
+      <li><a href="customers.html" class="active"><span class="nav-icon">👤</span>Customers</a></li>
+      <li><a href="bills.html"><span class="nav-icon">📄</span>Bills</a></li>
+      <li><a href="payments.html"><span class="nav-icon">💳</span>Payments</a></li>
+      <li><a href="complaints.html"><span class="nav-icon">📢</span>Complaints</a></li>
+      <li><a href="triggers.html"><span class="nav-icon">🔔</span>Trigger Alerts</a></li>
+    </ul>
+    <div class="dark-toggle" onclick="toggleDark()">
+      <div class="toggle-switch"></div>
+      <span id="dark-label">Dark Mode</span>
+    </div>
+  </aside>
+
+  <!-- Bill History Modal -->
+  <div class="modal-overlay" id="history-modal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <h2 id="modal-title">Bill History</h2>
+      <table>
+        <thead>
+          <tr><th>No.</th><th>Date</th><th>Units</th><th>Amount</th><th>Status</th></tr>
+        </thead>
+        <tbody id="modal-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="page-header">
+      <h1>Customers</h1>
+      <p>Add, view, search and remove electricity customers</p>
+    </div>
+
+    <div class="alert alert-success" id="msg-success"></div>
+    <div class="alert alert-error"   id="msg-error"></div>
+
+    <!-- Add Customer -->
+    <div class="section" style="margin-bottom:28px;">
+      <div class="section-header"><h2>Add New Customer</h2></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="name" placeholder="e.g. Arjun Mehta"/>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="e.g. arjun@email.com"/>
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="text" id="phone" placeholder="10-digit number"/>
+        </div>
+        <div class="form-group">
+          <label>Aadhar Number</label>
+          <input type="text" id="aadhar" placeholder="12-digit Aadhar number" maxlength="12"/>
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <input type="text" id="address" placeholder="Full address"/>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="addCustomer()">Add Customer</button>
+      </div>
+    </div>
+
+    <!-- Assign Meter -->
+    <div class="section" style="margin-bottom:28px;">
+      <div class="section-header"><h2>Assign Meter to Customer</h2></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Customer</label>
+          <select id="meter-customer"></select>
+        </div>
+        <div class="form-group">
+          <label>Meter Number</label>
+          <input type="text" id="meter-number" placeholder="e.g. MET-2001"/>
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="meter-location" placeholder="e.g. Ground floor"/>
+        </div>
+        <div class="form-group">
+          <label>Meter Type</label>
+          <select id="meter-type">
+            <option value="single_phase">Single Phase</option>
+            <option value="three_phase">Three Phase</option>
+            <option value="smart">Smart Meter</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-success" onclick="addMeter()">Assign Meter</button>
+      </div>
+    </div>
+
+    <!-- Customers Table -->
+    <div class="section">
+      <div class="section-header">
+        <h2>All Customers</h2>
+        <button class="btn btn-info btn-sm" onclick="exportCustomersExcel()">Export to Excel</button>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search by name, phone or email..."
+               oninput="filterCustomers()"/>
+      </div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="customers-body">
+          <tr><td colspan="7" style="text-align:center;padding:20px;color:#718096;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    // ── Dark mode ──────────────────────────────────────────────
+    function toggleDark() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('darkMode', isDark);
+      document.getElementById('dark-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+      document.getElementById('dark-label').textContent = 'Light Mode';
+    }
+
+    let allCustomers = [];
+
+    // ── Load customers ─────────────────────────────────────────
+    function loadCustomers() {
+      fetch('/api/customers')
+        .then(r => r.json())
+        .then(customers => {
+          allCustomers = customers;
+          renderCustomers(customers);
+          const sel = document.getElementById('meter-customer');
+          sel.innerHTML = customers.map(c =>
+            `<option value="${c.customer_id}">${c.name}</option>`
+          ).join('');
+        })
+        .catch(() => {
+          document.getElementById('customers-body').innerHTML =
+            '<tr><td colspan="7" style="text-align:center;padding:20px;color:#718096;">Start your backend server.</td></tr>';
+        });
+    }
+
+    function renderCustomers(customers) {
+      const tbody = document.getElementById('customers-body');
+      tbody.innerHTML = '';
+      if (!customers.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#718096;">No customers found.</td></tr>';
+        return;
+      }
+      customers.forEach((c, index) => {
+        const badge = c.status === 'active' ? 'badge-green' : c.status === 'suspended' ? 'badge-red' : 'badge-orange';
+        tbody.innerHTML += `<tr>
+          <td>${index + 1}</td>
+          <td>
+            <a href="#" onclick="viewHistory(${c.customer_id},'${c.name}')"
+               style="font-weight:700;text-decoration:none;color:#1a365d;">
+              ${c.name}
+            </a>
+          </td>
+          <td>${c.phone}</td>
+          <td>${c.email || '—'}</td>
+          <td>${c.address}</td>
+          <td><span class="badge ${badge}">${c.status}</span></td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-info btn-sm" onclick="viewHistory(${c.customer_id},'${c.name}')">History</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCustomer(${c.customer_id},'${c.name}')">Delete</button>
+          </td>
+        </tr>`;
+      });
+    }
+
+    // ── Search filter ──────────────────────────────────────────
+    function filterCustomers() {
+      const q = document.getElementById('search-input').value.toLowerCase();
+      const filtered = allCustomers.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(q) ||
+        (c.email || '').toLowerCase().includes(q)
+      );
+      renderCustomers(filtered);
+    }
+
+    // ── Add customer ───────────────────────────────────────────
+    function addCustomer() {
+      const name    = document.getElementById('name').value.trim();
+      const email   = document.getElementById('email').value.trim();
+      const phone   = document.getElementById('phone').value.trim();
+      const aadhar  = document.getElementById('aadhar').value.trim();
+      const address = document.getElementById('address').value.trim();
+      if (!name || !phone || !address) { showMsg('error','Name, phone and address required.'); return; }
+      if (aadhar && aadhar.length !== 12) { showMsg('error','Aadhar must be exactly 12 digits.'); return; }
+
+      fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone, aadhar_number: aadhar, address })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          showMsg('success', `"${name}" added successfully!`);
+          ['name','email','phone','aadhar','address'].forEach(id => document.getElementById(id).value = '');
+          loadCustomers();
+        } else showMsg('error', d.error || 'Could not add customer.');
+      })
+      .catch(() => showMsg('error', 'Cannot reach server.'));
+    }
+
+    // ── Delete customer ────────────────────────────────────────
+    function deleteCustomer(id, name) {
+      if (!confirm(`DELETE "${name}"?\nThis removes all their bills and payments too!`)) return;
+      fetch(`/api/customers/${id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.success) { showMsg('success', `"${name}" deleted.`); loadCustomers(); }
+          else showMsg('error', d.error);
+        })
+        .catch(() => showMsg('error', 'Cannot reach server.'));
+    }
+
+    // ── Assign meter ───────────────────────────────────────────
+    function addMeter() {
+      const customer_id  = document.getElementById('meter-customer').value;
+      const meter_number = document.getElementById('meter-number').value.trim();
+      const location     = document.getElementById('meter-location').value.trim();
+      const meter_type   = document.getElementById('meter-type').value;
+      if (!meter_number) { showMsg('error','Meter number required.'); return; }
+
+      fetch('/api/meters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_id, meter_number, location, meter_type })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          showMsg('success', `Meter ${meter_number} assigned!`);
+          document.getElementById('meter-number').value = '';
+          document.getElementById('meter-location').value = '';
+        } else showMsg('error', d.error);
+      })
+      .catch(() => showMsg('error', 'Cannot reach server.'));
+    }
+
+    // ── Bill history modal ─────────────────────────────────────
+    function viewHistory(customerId, name) {
+      document.getElementById('modal-title').textContent = `Bill History — ${name}`;
+      document.getElementById('modal-body').innerHTML =
+        '<tr><td colspan="5" style="text-align:center;padding:16px;">Loading...</td></tr>';
+      document.getElementById('history-modal').classList.add('open');
+
+      fetch(`/api/customer-bills/${customerId}`)
+        .then(r => r.json())
+        .then(bills => {
+          const tbody = document.getElementById('modal-body');
+          if (!bills.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#718096;">No bills yet.</td></tr>';
+            return;
+          }
+          tbody.innerHTML = bills.map((b, i) => {
+            const badge = { paid:'badge-green', unpaid:'badge-blue', overdue:'badge-red' }[b.bill_status] || 'badge-blue';
+            return `<tr>
+              <td>${i + 1}</td>
+              <td>${new Date(b.bill_date).toLocaleDateString('en-IN')}</td>
+              <td>${b.units_consumed} kWh</td>
+              <td>₹${Number(b.total_amount).toLocaleString('en-IN')}</td>
+              <td><span class="badge ${badge}">${b.bill_status}</span></td>
+            </tr>`;
+          }).join('');
+        });
+    }
+
+    function closeModal() {
+      document.getElementById('history-modal').classList.remove('open');
+    }
+
+    // ── Export to Excel ────────────────────────────────────────
+    function exportCustomersExcel() {
+      const rows = allCustomers.map((c, i) => ({
+        'No.': i + 1, Name: c.name, Phone: c.phone,
+        Email: c.email || '', Address: c.address, Status: c.status
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+      XLSX.writeFile(wb, 'Ecozep_Customers.xlsx');
+    }
+
+    // ── Helper ─────────────────────────────────────────────────
+    function showMsg(type, text) {
+      const el = document.getElementById('msg-' + type);
+      el.textContent = text; el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    loadCustomers();
+  </script>
+</body>
+</html>
